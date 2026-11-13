@@ -1,0 +1,84 @@
+CREATE DATABASE BD_HAMBURGUESERIA
+
+USE BD_HAMBURGUESERIA
+
+--DROP TABLE Restaurantes
+CREATE TABLE Restaurantes(
+IDRestaurante BIGINT NOT NULL PRIMARY KEY IDENTITY(1,1),
+Direccion VARCHAR(50) NOT NULL,
+HorarioApertura TIME NOT NULL,
+HorarioSalida TIME NOT NULL,
+Telefono INTEGER NOT NULL
+);
+GO
+
+--DROP TABLE Venta
+CREATE TABLE Empleados(
+IDEmpleado BIGINT NOT NULL PRIMARY KEY IDENTITY(1,1),
+Nombre VARCHAR(50) NOT NULL,
+DNI INTEGER NOT NULL,
+Rol VARCHAR (50) NOT NULL, -- cajero, cocinero, gerente y manager
+IDRestaurante BIGINT NOT NULL,
+FOREIGN KEY (IDRestaurante) REFERENCES Restaurantes(IDRestaurante)
+);
+
+GO
+
+CREATE TABLE Clientes(
+IDCliente BIGINT NOT NULL PRIMARY KEY IDENTITY(1,1),
+Nombre VARCHAR(50) NOT NULL,
+Apellido VARCHAR(50) NOT NULL,
+DNI INTEGER NOT NULL,
+Telefono INTEGER
+);
+
+GO
+
+CREATE TABLE Venta(
+IDVenta BIGINT NOT NULL PRIMARY KEY IDENTITY(1,1),
+FechaVenta DATE NOT NULL DEFAULT GETDATE(),
+Estado varchar(50) NOT NULL,                        -- Preparacion, Entregado
+IDCliente BIGINT NOT NULL,
+IDRestaurante BIGINT NOT NULL,
+IDEmpleadoResponsable BIGINT NOT NULL,
+modalidadConsumo VARCHAR(50) NOT NULL DEFAULT 'local',  -- 
+FOREIGN KEY (IDCliente) REFERENCES Clientes(IDCliente),
+FOREIGN KEY (IDRestaurante) REFERENCES Restaurantes(IDRestaurante),
+FOREIGN KEY (IDEmpleadoResponsable) REFERENCES Empleados(IDEmpleado)
+);
+
+GO
+
+CREATE TABLE CategoriaProducto(
+IDCategoria BIGINT NOT NULL PRIMARY KEY IDENTITY(1,1),
+Nombre VARCHAR(50) NOT NULL,
+Descripcion text NOT NULL
+);
+
+GO
+
+CREATE TABLE Producto(
+IDProducto BIGINT NOT NULL PRIMARY KEY IDENTITY(1,1),
+Nombre VARCHAR(20) NOT NULL,
+Descripcion text NOT NULL,
+Precio DECIMAL NOT NULL,
+Stock INTEGER NOT NULL,
+IDCategoria BIGINT NOT NULL,
+FOREIGN KEY (IDCategoria) REFERENCES CategoriaProducto(IDCategoria)
+);
+
+
+GO
+--DROP TABLE Detalla_venta
+CREATE TABLE Detalla_venta(
+IDTransaccion BIGINT NOT NULL PRIMARY KEY IDENTITY(1,1),
+cantidaVendida INTEGER NOT NULL,
+IDVenta BIGINT NOT NULL,
+IDProducto BIGINT NOT NULL,
+tipoDePago VARCHAR(20) NOT NULL DEFAULT 'efectivo',
+precioUnitario DECIMAL NOT NULL,
+FOREIGN KEY (IDVenta) REFERENCES Venta(IDVenta),
+FOREIGN KEY (IDProducto) REFERENCES Producto(IDProducto)
+);
+
+
