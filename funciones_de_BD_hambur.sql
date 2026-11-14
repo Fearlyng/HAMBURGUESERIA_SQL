@@ -1,6 +1,6 @@
 USE BD_HAMBURGUESERIA
 GO
--- Buscar productos por nombre, combo.
+-- Buscar productos por concidencia de nombre, pasado por paramtro
 CREATE PROCEDURE BUSCAR_PRODUCTO(@Nombre VARCHAR(20))
 AS
 BEGIN
@@ -11,9 +11,8 @@ BEGIN
 END
 
 GO
--- Buscar Compra x Producto (NEW)
--- REVISAR (=)
 
+-- Permite Buscar las ventas que conciden con el producto, pasado por parametro
 CREATE PROCEDURE BUSCAR_COMPRA_POR_PRODUCTO(@Nombre VARCHAR(20))
 AS
 BEGIN
@@ -23,9 +22,10 @@ BEGIN
     LEFT JOIN Producto P ON P.IDProducto = DV.IDProducto
     WHERE P.Nombre = @Nombre
 END
-GO
--- ● Buscar cliente por nombre, por DNI, teléfono y producto pago.
 
+GO
+
+-- Permite buscar a los clientes que concidan por su nombre pasado por parametro 
 CREATE PROCEDURE BUSCAR_CLIENTE_NOMBRE(@Nombre VARCHAR(50))
 AS
 BEGIN
@@ -36,6 +36,7 @@ BEGIN
 END
 GO
 
+-- Permite buscar a el cliente mediante su dni, pasado por parametro
 CREATE PROCEDURE BUSCAR_CLIENTE_DNI(@DNI INTEGER)
 AS
 BEGIN
@@ -44,8 +45,10 @@ BEGIN
     FROM Clientes
     WHERE DNI = @DNI 
 END
+
 GO
 
+-- Permite buscar a los clientes que concidan por su numero de telefono pasado por parametro
 CREATE PROCEDURE BUSCAR_CLIENTE_TELEFONO(@Telefono INTEGER)
 AS
 BEGIN
@@ -54,8 +57,10 @@ BEGIN
     FROM Clientes
     WHERE Telefono = @Telefono
 END
+
 GO
 
+-- Permite buscar a por nombre A los clientes que recibieron su pedido 
 CREATE PROCEDURE BUSCAR_CLIENTE_PRODUCTO_PAGO(@Nombre VARCHAR(20))
 AS
 BEGIN
@@ -69,7 +74,7 @@ BEGIN
 END
 GO
 
--- ● Consultar el estado de pedido: pedido, producción o entregado.
+-- Consultar el estado de pedido: preparacion, entregado, canselado.
 CREATE FUNCTION estado_de_pedido(@numeroDePedido BIGINT)
 RETURNS VARCHAR(50)
 AS
@@ -86,7 +91,7 @@ END
 GO
 
 
--- ● Consulta los productos con stock
+-- Consulta los productos con stock
 CREATE VIEW stock_de_productos AS
     SELECT *
     FROM Producto P
@@ -95,7 +100,7 @@ CREATE VIEW stock_de_productos AS
 GO
 
 
--- ● Consultar los distintos horarios de atención y dirección de los restaurantes.
+-- Consultar los distintos horarios de atención y dirección de los restaurantes.
 CREATE VIEW consultar_horarios_y_direccion AS
     SELECT 
     R.HorarioApertura,
@@ -103,7 +108,7 @@ CREATE VIEW consultar_horarios_y_direccion AS
     R.Direccion
     FROM Restaurantes R
 
--- ● Consultar si el pago fue hecho a través de transferencia o efectivo, y muestra quien lo  hizo
+-- muetras los IDs de los detalles de venta junto al tipo de pago efectuado efectivo
 GO
 CREATE VIEW tipo_de_pago_efectivo AS
 SELECT
@@ -114,6 +119,7 @@ WHERE tipoDePago = 'efectivo'
 
 GO
 
+-- muetras los IDs de los detalles de venta junto al tipo de pago efectuado transferencia
 CREATE VIEW tipo_de_pago_transferencia AS
 SELECT
 DV.IDTransaccion,
@@ -122,8 +128,7 @@ FROM Detalla_venta DV
 WHERE tipoDePago = 'transferencia'
 GO
 
--- ● Podrá realizar modificaciones y/o cancelar ventas (Manager).
---(procedimiento)
+-- se encarga de modificar el producto comprado, y verifica que lo haga el manager
 CREATE PROCEDURE modificarPedido(
     @IDVENTA BIGINT,
     @IDPRODUCTO BIGINT,
@@ -157,40 +162,67 @@ BEGIN CATCH
 END CATCH
 END
 
-
--- ● Podrá agregar o eliminar productos/combos al listado que ofrecen al público (baja logica).
 GO
-CREATE TRIGGER bajaLogicaPoducto on Producto
-INSTEAD OF DELETE
+
+--se encarga de canselar un pedido , y verifica que lo haga el manager
+CREATE PROCEDURE canselarPedido(
+    @IDVENTA BIGINT,
+    @IDEMPLEADOIGRESANTE BIGINT 
+)
 AS
 BEGIN
-    BEGIN TRY
-        BEGIN TRANSACTION
-            DECLARE @ID BIGINT = 0
+BEGIN TRY
+    BEGIN TRANSACTION
+        DECLARE @ROL VARCHAR(50) = '';
+        SELECT 
+        @ROL = rol 
+        FROM Empleados
+        WHERE IDEmpleado = @IDEMPLEADOIGRESANTE
 
-            SELECT @ID = IDProducto
-            FROM deleted
+        IF @ROL != 'manager'
+            BEGIN
+                PRINT('Empleado sin permisos')
+                RETURN
+            END
+        ELSE
+            BEGIN
+                UPDATE Venta
+                SET Estado = 'canselada'
+                WHERE IDVenta = @IDVENTA
+            END
+    COMMIT TRANSACTION
 
-            UPDATE Producto
-            SET Stock = 0
-            WHERE IDProducto = @ID
-        COMMIT TRANSACTION
-    END TRY
-    BEGIN CATCH
-        ROLLBACK TRANSACTION
-    END CATCH
+END TRY
+BEGIN CATCH
+    ROLLBACK TRANSACTION
+END CATCH
 END
 
 GO
---(Nombre,Descripcion,Precio,Stock,IDCategoria)
--- nombre y IDCategoria no puden ser nulus
--- precio y stock >= 0
+-- se encarga de realizar una baja logica en lugar de eliminar (vaciar stock) el producto.
+CREATE TRIGGER bajaLogicaProducto on Producto
+INSTEAD OF DELETE
+AS
+BEGIN
+        DECLARE @ID BIGINT = 0
+
+        SELECT @ID = IDProducto
+        FROM deleted
+
+        UPDATE Producto
+        SET Stock = 0
+        WHERE IDProducto = @ID
+
+END
+
+GO
+
+-- Se encarga de verificar que los datos pasados al insert se carguen en relacion a cierta estructura.
+-- tambien verifica si ya existe el producto, en tal caso aumenta el stock en lugar de añadir un producto nuevo.
 CREATE TRIGGER cargarProducto on Producto
 INSTEAD OF INSERT
 AS
 BEGIN
-    BEGIN TRY
-        BEGIN TRANSACTION
         DECLARE @Nombre VARCHAR(50) = ''
         DECLARE @Descripcion VARCHAR(50) = ''
         DECLARE @Precio DECIMAL = 0
@@ -208,26 +240,31 @@ BEGIN
         IF @Nombre IS NULL
         BEGIN
             PRINT('campo "Nombre" vacio')
+            RETURN
         END
 
         IF @Descripcion IS NULL
         BEGIN
             PRINT('campo "Descripcion" vacio')
+            RETURN
         END
 
         IF @Precio <= 0 OR @Precio IS NULL
         BEGIN
             PRINT('campo "Precio" no valido')
+            RETURN
         END
 
         IF @Stock < 0 OR @Stock IS NULL
         BEGIN
             PRINT('campo "Stock" no puede ser negativo')
+            RETURN
         END
 
         IF @IDCategoria IS NULL
         BEGIN
             PRINT('campo "Categoria" sin definir')
+            RETURN
         END
 
 
@@ -237,58 +274,27 @@ BEGIN
             WHERE Nombre = @Nombre
         )
         BEGIN
-
-            IF @Nombre IS NOT NULL
-            AND @Descripcion IS NOT NULL 
-            AND @Stock >= 0 AND @Stock IS NOT NULL 
-            AND @Precio > 0  AND @Precio IS NOT NULL 
-            AND @IDCategoria IS NOT NULL
-            BEGIN
-                INSERT INTO Producto (Nombre,Descripcion,Precio,Stock,IDCategoria) VALUES 
+            INSERT INTO Producto (Nombre,Descripcion,Precio,Stock,IDCategoria) VALUES 
                                     (@Nombre,@Descripcion,@Precio,@Stock,@IDCategoria)
-
-                print('cargado')
-            END
-            ELSE
-            BEGIN
-                PRINT('no cargado')
-            END
-
+            print('nuevo producto añadido')
         END
         ELSE
         BEGIN
 
-        UPDATE Producto
-        set Stock = Stock + @Stock
-        WHERE Nombre = @Nombre
-
+            UPDATE Producto
+            set Stock = Stock + @Stock
+            WHERE Nombre = @Nombre
+            print('stock cargado')
         END
-
-
-        COMMIT TRANSACTION
-    END TRY
-    BEGIN CATCH
-        ROLLBACK TRANSACTION
-    END CATCH
 END
 
-
-
--- ● Podrá agregar o eliminar empleados/clientes del sistema. (-[ NO LO SE ]-)
-
 GO
---(Nombre char(50), DNI INT, Rol char(50), IDRestaurante BIGINT)
--- Nombre sin numeros
--- DNI sin letras ni caracteres, 8 digitos
--- Rol = cajero, cocinero, gerente o manager
--- IDRestaurante existe
+
+-- Se encarga de verificar que los datos pasados al insert se carguen en relacion a cierta estructura.
 CREATE TRIGGER cargarEmpleado on Empleados
 INSTEAD OF INSERT
 AS
-BEGIN
-    BEGIN TRY
-        BEGIN TRANSACTION
-        
+BEGIN   
         DECLARE @NombreEmpleado VARCHAR(50) = ''
         DECLARE @DNI INTEGER = 0
         DECLARE @ROL VARCHAR(50) = ''
@@ -305,29 +311,20 @@ BEGIN
         IF @NombreEmpleado IS NULL
         OR @NombreEmpleado LIKE '%[^a-zA-Z ]%'
         BEGIN
-        PRINT('Nombre Incorrecto. (no debe incluir caracteres especiales y numeros)')
-        END
-        ELSE
-        BEGIN
-        PRINT('Nombre correcto')
+            PRINT('Nombre Incorrecto. (no debe incluir caracteres especiales y numeros)')
+            RETURN
         END
 
         IF @DNI NOT BETWEEN 10000000 AND 99999999 OR @DNI IS NULL
         BEGIN
             PRINT('Debe contener 8 digitos')
-        END
-        ELSE
-        BEGIN
-        PRINT('DNI Cargado Correctamente')
+            RETURN
         END
 
         IF @ROL NOT IN ('cajero', 'cocinero', 'gerente', 'manager') OR @ROL IS NULL
         BEGIN
         PRINT('Rol Incorrecto.')
-        END
-        ELSE
-        BEGIN
-        PRINT('Rol Correcto')
+        RETURN
         END
 
         IF @IDRestaurante IS NULL
@@ -337,43 +334,22 @@ BEGIN
             WHERE IDRestaurante = @IDRestaurante
         )
         BEGIN
-        PRINT('Restaurante Incorrecto')
+            PRINT('Restaurante Incorrecto')
+            RETURN
         END
-        ELSE
-        BEGIN
-        PRINT('Restaurante Correcto')
-        END
-
-        IF @IDRestaurante IS NOT NULL
-        AND EXISTS (
-            SELECT 1
-            FROM Restaurantes
-            WHERE IDRestaurante = @IDRestaurante
-        )
-        AND @ROL IN ('cajero', 'cocinero', 'gerente', 'manager') AND @ROL IS NOT NULL
-        AND @DNI BETWEEN 10000000 AND 99999999 AND @DNI IS NOT NULL
-        AND @NombreEmpleado NOT LIKE '%[^a-zA-Z ]%' AND @NombreEmpleado IS NOT NULL
-        BEGIN
+        
         INSERT INTO Empleados (Nombre, DNI, Rol, IDRestaurante) VALUES
         (@NombreEmpleado,@DNI,@ROL,@IDRestaurante) 
-        PRINT('entro')
-        END
-        ELSE
-        BEGIN
-        PRINT('no entro')
-        END
+        PRINT('Cargar Empleado Correcta')
 
-        COMMIT TRANSACTION
-    END TRY
-    BEGIN CATCH
-        ROLLBACK TRANSACTION
-    END CATCH
 END
-
---DROP TRIGGER cargarEmpleado
 
 GO
 
+-- Se encarga de verificar la existencia de:
+--- la venta pasado en el insert
+--- El producto pasado en el insert
+-- tambien se encarga de cargar el precio unitario en relacion al producto comprado.
 CREATE TRIGGER verificarExistenciaDetalleVenta ON Detalla_venta
 INSTEAD OF INSERT
 AS
@@ -406,8 +382,10 @@ END
 
 GO 
 
---DROP TRIGGER verificarExistenciaDetalleVenta
-
+-- Se encarga de verificar la existencia de:
+--- El cliente pasado en el insert
+--- El Restaurante pasado en el insert
+-- -El Empleado pasado en el insert
 CREATE TRIGGER verificarExistenciaVenta ON venta
 INSTEAD OF INSERT
 AS
@@ -450,6 +428,8 @@ BEGIN
         FROM inserted
 
 END
+
+
 -- zona de test
 -- Al menos 3 (tres) vistas. 
 --(tipo_de_pago_transferencia, tipo_de_pago_efectivo, stock_de_productos)
