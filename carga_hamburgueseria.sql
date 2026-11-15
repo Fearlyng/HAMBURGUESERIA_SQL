@@ -1,4 +1,3 @@
-
 USE BD_HAMBURGUESERIA
 INSERT INTO CategoriaProducto(Nombre,Descripcion) VALUES 
 ('carne','carne de calidad'),

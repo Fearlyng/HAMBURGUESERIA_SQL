@@ -88,6 +88,7 @@ BEGIN
 
     RETURN @estadoActual
 END
+
 GO
 
 
@@ -99,7 +100,11 @@ CREATE VIEW stock_de_productos AS
 
 GO
 
+SELECT * FROM Producto
 
+SELECT * FROM stock_de_productos
+
+GO
 -- Consultar los distintos horarios de atención y dirección de los restaurantes.
 CREATE VIEW consultar_horarios_y_direccion AS
     SELECT 
@@ -164,6 +169,17 @@ END
 
 GO
 
+SELECT * FROM Detalla_venta
+
+EXEC modificarPedido 1,3,1
+
+SELECT * FROM Detalla_venta
+
+EXEC modificarPedido 1,3,2
+
+SELECT * FROM Detalla_venta
+GO
+
 --se encarga de canselar un pedido , y verifica que lo haga el manager
 CREATE PROCEDURE canselarPedido(
     @IDVENTA BIGINT,
@@ -182,7 +198,6 @@ BEGIN TRY
         IF @ROL != 'manager'
             BEGIN
                 PRINT('Empleado sin permisos')
-                RETURN
             END
         ELSE
             BEGIN
@@ -199,19 +214,29 @@ END CATCH
 END
 
 GO
+
+SELECT * FROM Venta
+
+EXEC canselarPedido 3,3
+
+SELECT * FROM Venta
+
+EXEC canselarPedido 3,2
+
+SELECT * FROM Venta
+
+GO
 -- se encarga de realizar una baja logica en lugar de eliminar (vaciar stock) el producto.
-CREATE TRIGGER bajaLogicaProducto on Producto
+CREATE TRIGGER bajaLogicaProducto ON Producto
 INSTEAD OF DELETE
 AS
 BEGIN
-        DECLARE @ID BIGINT = 0
 
-        SELECT @ID = IDProducto
-        FROM deleted
-
-        UPDATE Producto
-        SET Stock = 0
-        WHERE IDProducto = @ID
+    UPDATE P
+    SET P.Stock = 0
+    FROM Producto P
+    INNER JOIN deleted D
+        ON P.IDProducto = D.IDProducto
 
 END
 
@@ -219,130 +244,168 @@ GO
 
 -- Se encarga de verificar que los datos pasados al insert se carguen en relacion a cierta estructura.
 -- tambien verifica si ya existe el producto, en tal caso aumenta el stock en lugar de añadir un producto nuevo.
-CREATE TRIGGER cargarProducto on Producto
+
+CREATE TRIGGER cargarProducto ON Producto
 INSTEAD OF INSERT
 AS
 BEGIN
-        DECLARE @Nombre VARCHAR(50) = ''
-        DECLARE @Descripcion VARCHAR(50) = ''
-        DECLARE @Precio DECIMAL = 0
-        DECLARE @Stock INTEGER = 0
-        DECLARE @IDCategoria BIGINT = 0
 
-        SELECT 
-        @Nombre = Nombre,
-        @Descripcion = Descripcion,
-        @Precio = Precio,
-        @Stock = Stock,
-        @IDCategoria = IDCategoria
+    IF EXISTS (
+        SELECT 1
         FROM inserted
+        WHERE Nombre IS NULL OR Nombre = ''
+    )
+    BEGIN
+        PRINT('Campo Nombre vacio')
+        RETURN
+    END
 
-        IF @Nombre IS NULL
-        BEGIN
-            PRINT('campo "Nombre" vacio')
-            RETURN
-        END
+    IF EXISTS (
+        SELECT 1
+        FROM inserted
+        WHERE Descripcion IS NULL OR Descripcion = ''
+    )
+    BEGIN
+        PRINT('Campo Descripcion vacio')
+        RETURN
+    END
 
-        IF @Descripcion IS NULL
-        BEGIN
-            PRINT('campo "Descripcion" vacio')
-            RETURN
-        END
+    IF EXISTS (
+        SELECT 1
+        FROM inserted
+        WHERE Precio IS NULL OR Precio <= 0
+    )
+    BEGIN
+        PRINT('Campo Precio no valido')
+        RETURN
+    END
 
-        IF @Precio <= 0 OR @Precio IS NULL
-        BEGIN
-            PRINT('campo "Precio" no valido')
-            RETURN
-        END
+    IF EXISTS (
+        SELECT 1
+        FROM inserted
+        WHERE Stock IS NULL OR Stock < 0
+    )
+    BEGIN
+        PRINT('Campo Stock no puede ser negativo')
+        RETURN
+    END
 
-        IF @Stock < 0 OR @Stock IS NULL
-        BEGIN
-            PRINT('campo "Stock" no puede ser negativo')
-            RETURN
-        END
-
-        IF @IDCategoria IS NULL
-        BEGIN
-            PRINT('campo "Categoria" sin definir')
-            RETURN
-        END
-
-
-        IF  NOT EXISTS (
+    IF EXISTS (
+        SELECT 1
+        FROM inserted I
+        WHERE NOT EXISTS (
             SELECT 1
-            FROM Producto
-            WHERE Nombre = @Nombre
+            FROM Categoria C
+            WHERE C.IDCategoria = I.IDCategoria
         )
-        BEGIN
-            INSERT INTO Producto (Nombre,Descripcion,Precio,Stock,IDCategoria) VALUES 
-                                    (@Nombre,@Descripcion,@Precio,@Stock,@IDCategoria)
-            print('nuevo producto añadido')
-        END
-        ELSE
-        BEGIN
+    )
+    BEGIN
+        PRINT('Categoria no encontrada')
+        RETURN
+    END
 
-            UPDATE Producto
-            set Stock = Stock + @Stock
-            WHERE Nombre = @Nombre
-            print('stock cargado')
-        END
+    UPDATE P
+    SET P.Stock = P.Stock + I.Stock
+    FROM Producto P
+    INNER JOIN inserted I
+        ON P.Nombre = I.Nombre
+
+
+    INSERT INTO Producto (Nombre, Descripcion, Precio, Stock, IDCategoria)
+    SELECT I.Nombre,I.Descripcion,I.Precio,I.Stock,I.IDCategoria
+    FROM inserted I
+    WHERE NOT EXISTS (
+        SELECT 1
+        FROM Producto P
+        WHERE P.Nombre = I.Nombre
+    )
+
+    PRINT('Productos procesados')
+
 END
+
 
 GO
 
--- Se encarga de verificar que los datos pasados al insert se carguen en relacion a cierta estructura.
-CREATE TRIGGER cargarEmpleado on Empleados
+-- Se encarga de verificar que los datos pasados
+-- al insert se carguen en relacion a cierta estructura.
+CREATE TRIGGER cargarEmpleado ON Empleados
 INSTEAD OF INSERT
 AS
-BEGIN   
-        DECLARE @NombreEmpleado VARCHAR(50) = ''
-        DECLARE @DNI INTEGER = 0
-        DECLARE @ROL VARCHAR(50) = ''
-        DECLARE @IDRestaurante BIGINT = 0
-
-        SELECT 
-        @NombreEmpleado = Nombre,
-        @DNI = DNI,
-        @ROL = Rol,
-        @IDRestaurante = IDRestaurante
+BEGIN
+    -- Validar nombres
+    IF EXISTS (
+        SELECT 1
         FROM inserted
+        WHERE Nombre IS NULL
+        OR Nombre LIKE '%[^a-zA-Z ]%'
+    )
+    BEGIN
+        PRINT('Nombre Incorrecto.')
+        RETURN
+    END
 
+    -- Validar DNI
+    IF EXISTS (
+        SELECT 1
+        FROM inserted
+        WHERE DNI NOT BETWEEN 10000000 AND 99999999
+        OR DNI IS NULL
+    )
+    BEGIN
+        PRINT('Debe contener 8 digitos.')
+        RETURN
+    END
 
-        IF @NombreEmpleado IS NULL
-        OR @NombreEmpleado LIKE '%[^a-zA-Z ]%'
-        BEGIN
-            PRINT('Nombre Incorrecto. (no debe incluir caracteres especiales y numeros)')
-            RETURN
-        END
-
-        IF @DNI NOT BETWEEN 10000000 AND 99999999 OR @DNI IS NULL
-        BEGIN
-            PRINT('Debe contener 8 digitos')
-            RETURN
-        END
-
-        IF @ROL NOT IN ('cajero', 'cocinero', 'gerente', 'manager') OR @ROL IS NULL
-        BEGIN
+    -- Validar roles
+    IF EXISTS (
+        SELECT 1
+        FROM inserted
+        WHERE Rol NOT IN ('cajero', 'cocinero', 'gerente', 'manager')
+        OR Rol IS NULL
+    )
+    BEGIN
         PRINT('Rol Incorrecto.')
         RETURN
-        END
+    END
 
-        IF @IDRestaurante IS NULL
+    -- Validar restaurantes
+    IF EXISTS (
+        SELECT 1
+        FROM inserted I
+        WHERE I.IDRestaurante IS NULL
         OR NOT EXISTS (
             SELECT 1
-            FROM Restaurantes
-            WHERE IDRestaurante = @IDRestaurante
+            FROM Restaurantes R
+            WHERE R.IDRestaurante = I.IDRestaurante
         )
-        BEGIN
-            PRINT('Restaurante Incorrecto')
-            RETURN
-        END
-        
-        INSERT INTO Empleados (Nombre, DNI, Rol, IDRestaurante) VALUES
-        (@NombreEmpleado,@DNI,@ROL,@IDRestaurante) 
-        PRINT('Cargar Empleado Correcta')
+    )
+    BEGIN
+        PRINT('Restaurante Incorrecto.')
+        RETURN
+    END
 
+    -- Insertar todos los registros
+    INSERT INTO Empleados (Nombre, DNI, Rol, IDRestaurante)
+    SELECT Nombre, DNI, Rol, IDRestaurante
+    FROM inserted;
+
+    PRINT('Carga de empleados correcta.')
 END
+
+
+GO
+
+SELECT * FROM Empleados
+INSERT INTO Empleados (Nombre) VALUES ('jose')
+
+SELECT * FROM Empleados
+
+INSERT INTO Empleados (Nombre,DNI,Rol,IDRestaurante) VALUES ('jose',45148697,'contador',2)
+SELECT * FROM Empleados
+
+INSERT INTO Empleados (Nombre,DNI,Rol,IDRestaurante) VALUES ('jose',45148697,'cajero',2)
+SELECT * FROM Empleados
 
 GO
 
@@ -350,37 +413,66 @@ GO
 --- la venta pasado en el insert
 --- El producto pasado en el insert
 -- tambien se encarga de cargar el precio unitario en relacion al producto comprado.
-CREATE TRIGGER verificarExistenciaDetalleVenta ON Detalla_venta
+CREATE TRIGGER verificarExistenciaDetalleVenta
+ON Detalla_venta
 INSTEAD OF INSERT
 AS
 BEGIN
-        DECLARE @IDVENTA BIGINT = 0
-        DECLARE @IDPRODUCTO BIGINT = 0
 
-        SELECT 
-        @IDVENTA = IDVenta,
-        @IDPRODUCTO = IDProducto
-        FROM inserted
+    -- Verificar que todas las ventas existan
+    IF EXISTS (
+        SELECT 1
+        FROM inserted I
+        WHERE NOT EXISTS (
+            SELECT 1
+            FROM Venta V
+            WHERE V.IDVenta = I.IDVenta
+        )
+    )
+    BEGIN
+        PRINT('Venta cargada no existe')
+        RETURN
+    END
 
-        IF NOT EXISTS (SELECT * FROM Venta WHERE IDVenta = @IDVENTA)
-        BEGIN
-            PRINT('Venta cargada no existe')
-            RETURN
-        END
+    -- Verificar que todos los productos existan
+    IF EXISTS (
+        SELECT 1
+        FROM inserted I
+        WHERE NOT EXISTS (
+            SELECT 1
+            FROM Producto P
+            WHERE P.IDProducto = I.IDProducto
+        )
+    )
+    BEGIN
+        PRINT('Producto cargado no existe')
+        RETURN
+    END
 
-        IF NOT EXISTS (SELECT * FROM Producto WHERE IDProducto = @IDPRODUCTO)
-        BEGIN
-            PRINT('Producto cargada no existe')
-            RETURN
-        END
+    -- Insertar todos los detalles
+    INSERT INTO Detalla_venta(cantidaVendida,IDVenta,IDProducto,tipoDePago,precioUnitario)
+    SELECT I.cantidaVendida,I.IDVenta,I.IDProducto,I.tipoDePago,P.Precio
+    FROM inserted I
+    INNER JOIN Producto P ON P.IDProducto = I.IDProducto
+    PRINT('Detalles de venta cargados')
 
-        INSERT INTO Detalla_venta(cantidaVendida,IDVenta,IDProducto,tipoDePago,precioUnitario)
-        SELECT ins.cantidaVendida,ins.IDVenta,ins.IDProducto,ins.tipoDePago,p.Precio
-        FROM inserted ins
-        JOIN producto p ON p.IDProducto = ins.IDProducto 
 END
 
 GO 
+
+SELECT * FROM Producto
+SELECT * FROM Venta
+SELECT * FROM Detalla_venta
+
+INSERT INTO Detalla_venta (cantidaVendida,IDVenta,IDProducto) VALUES (1,9,1)
+
+SELECT * FROM Detalla_venta
+
+INSERT INTO Detalla_venta (cantidaVendida,IDVenta,IDProducto) VALUES (1,1,2)
+
+SELECT * FROM Detalla_venta
+
+GO
 
 -- Se encarga de verificar la existencia de:
 --- El cliente pasado en el insert
@@ -428,8 +520,6 @@ BEGIN
         FROM inserted
 
 END
-
-
 -- zona de test
 -- Al menos 3 (tres) vistas. 
 --(tipo_de_pago_transferencia, tipo_de_pago_efectivo, stock_de_productos)
