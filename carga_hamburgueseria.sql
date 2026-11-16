@@ -37,6 +37,8 @@ INSERT INTO Venta (FechaVenta, Estado, IDCliente,IDRestaurante,IDEmpleadoRespons
 ('2026-11-10','Entregado',1,1,2,'local')
 SELECT * FROM Venta
 
+
+
 INSERT INTO Detalla_venta(cantidaVendida,IDVenta,IDProducto,tipoDePago) VALUES
 (2,1,1,'efectivo'),
 (1,2,2,'efectivo'),

@@ -100,11 +100,6 @@ CREATE VIEW stock_de_productos AS
 
 GO
 
-SELECT * FROM Producto
-
-SELECT * FROM stock_de_productos
-
-GO
 -- Consultar los distintos horarios de atención y dirección de los restaurantes.
 CREATE VIEW consultar_horarios_y_direccion AS
     SELECT 
@@ -169,17 +164,6 @@ END
 
 GO
 
-SELECT * FROM Detalla_venta
-
-EXEC modificarPedido 1,3,1
-
-SELECT * FROM Detalla_venta
-
-EXEC modificarPedido 1,3,2
-
-SELECT * FROM Detalla_venta
-GO
-
 --se encarga de canselar un pedido , y verifica que lo haga el manager
 CREATE PROCEDURE canselarPedido(
     @IDVENTA BIGINT,
@@ -206,24 +190,11 @@ BEGIN TRY
                 WHERE IDVenta = @IDVENTA
             END
     COMMIT TRANSACTION
-
 END TRY
 BEGIN CATCH
     ROLLBACK TRANSACTION
 END CATCH
 END
-
-GO
-
-SELECT * FROM Venta
-
-EXEC canselarPedido 3,3
-
-SELECT * FROM Venta
-
-EXEC canselarPedido 3,2
-
-SELECT * FROM Venta
 
 GO
 -- se encarga de realizar una baja logica en lugar de eliminar (vaciar stock) el producto.
@@ -263,7 +234,7 @@ BEGIN
     IF EXISTS (
         SELECT 1
         FROM inserted
-        WHERE Descripcion IS NULL OR Descripcion = ''
+        WHERE Descripcion IS NULL
     )
     BEGIN
         PRINT('Campo Descripcion vacio')
@@ -295,7 +266,7 @@ BEGIN
         FROM inserted I
         WHERE NOT EXISTS (
             SELECT 1
-            FROM Categoria C
+            FROM CategoriaProducto C
             WHERE C.IDCategoria = I.IDCategoria
         )
     )
@@ -324,7 +295,7 @@ BEGIN
 
 END
 
-
+drop TRIGGER cargarProducto
 GO
 
 -- Se encarga de verificar que los datos pasados
@@ -393,20 +364,6 @@ BEGIN
     PRINT('Carga de empleados correcta.')
 END
 
-
-GO
-
-SELECT * FROM Empleados
-INSERT INTO Empleados (Nombre) VALUES ('jose')
-
-SELECT * FROM Empleados
-
-INSERT INTO Empleados (Nombre,DNI,Rol,IDRestaurante) VALUES ('jose',45148697,'contador',2)
-SELECT * FROM Empleados
-
-INSERT INTO Empleados (Nombre,DNI,Rol,IDRestaurante) VALUES ('jose',45148697,'cajero',2)
-SELECT * FROM Empleados
-
 GO
 
 -- Se encarga de verificar la existencia de:
@@ -419,7 +376,6 @@ INSTEAD OF INSERT
 AS
 BEGIN
 
-    -- Verificar que todas las ventas existan
     IF EXISTS (
         SELECT 1
         FROM inserted I
@@ -434,7 +390,6 @@ BEGIN
         RETURN
     END
 
-    -- Verificar que todos los productos existan
     IF EXISTS (
         SELECT 1
         FROM inserted I
@@ -449,7 +404,6 @@ BEGIN
         RETURN
     END
 
-    -- Insertar todos los detalles
     INSERT INTO Detalla_venta(cantidaVendida,IDVenta,IDProducto,tipoDePago,precioUnitario)
     SELECT I.cantidaVendida,I.IDVenta,I.IDProducto,I.tipoDePago,P.Precio
     FROM inserted I
@@ -457,20 +411,6 @@ BEGIN
     PRINT('Detalles de venta cargados')
 
 END
-
-GO 
-
-SELECT * FROM Producto
-SELECT * FROM Venta
-SELECT * FROM Detalla_venta
-
-INSERT INTO Detalla_venta (cantidaVendida,IDVenta,IDProducto) VALUES (1,9,1)
-
-SELECT * FROM Detalla_venta
-
-INSERT INTO Detalla_venta (cantidaVendida,IDVenta,IDProducto) VALUES (1,1,2)
-
-SELECT * FROM Detalla_venta
 
 GO
 
@@ -520,17 +460,3 @@ BEGIN
         FROM inserted
 
 END
--- zona de test
--- Al menos 3 (tres) vistas. 
---(tipo_de_pago_transferencia, tipo_de_pago_efectivo, stock_de_productos)
--- Al menos 2 (dos) procedimientos almacenados, claramente diferenciados en su rol:
--- Uno de reporte parametrizado: recibe al menos un parámetro y
--- devuelve un conjunto de resultados (no una acción de escritura).
--- Uno de acción sobre la BD: modifica datos (inserta, actualiza o elimina)
--- como resultado de una operación de negocio.
--- (todos los buscar)
--- (modificarPedido)
--- Al menos 2 (dos) triggers, cubriendo:
--- Un evento de inserción (INSERT).
--- Un evento de eliminación (DELETE).
---(agregarProducto, bajaLogicaPoducto, agregarEmpleado)
