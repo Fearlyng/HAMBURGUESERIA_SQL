@@ -455,8 +455,8 @@ BEGIN
             RETURN;
         END
 
-        INSERT INTO Venta(IDCliente, IDEmpleadoResponsable, IDRestaurante, Estado, modalidadConsumo)
-        SELECT IDCliente, IDEmpleadoResponsable, IDRestaurante, Estado, modalidadConsumo
+        INSERT INTO Venta(IDCliente, FechaVenta, IDEmpleadoResponsable, IDRestaurante, Estado, modalidadConsumo)
+        SELECT IDCliente, FechaVenta, IDEmpleadoResponsable, IDRestaurante, Estado, modalidadConsumo
         FROM inserted
 
 END
